@@ -24,7 +24,7 @@ const app: Express = express();
 const port = process.env.PORT || 3000;
 app.use(express.json());
 
-// GET: Retrieve all users
+// GET de usuarios: se obtienen todos los usuarios
 app.get("/users", async (req: Request, res: Response) => {
   try {
     const query = "SELECT id, name, email FROM users";
@@ -35,7 +35,7 @@ app.get("/users", async (req: Request, res: Response) => {
   }
 });
 
-// POST: Create a new user
+// POST de usuarios: creacion de nuevos usuarios
 app.post("/users", async (req: Request, res: Response) => {
   let userDto: User = plainToClass(User, req.body);
   try {
@@ -50,7 +50,7 @@ app.post("/users", async (req: Request, res: Response) => {
   }
 });
 
-// GET: Retrieve all boards where the user is an admin
+// GET de tableros: se obtienen todos los tableros
 app.get("/boards", async (req: Request, res: Response) => {
   try {
     const query =
@@ -62,7 +62,7 @@ app.get("/boards", async (req: Request, res: Response) => {
   }
 });
 
-// POST: Create a new board
+// POST de tableros: creacion de nuevos tableros
 app.post("/boards", async (req: Request, res: Response) => {
   let boardDto: Board = plainToClass(Board, req.body);
   const client = await pool.connect();
@@ -93,13 +93,13 @@ app.post("/boards", async (req: Request, res: Response) => {
   }
 });
 
-// GET: Retrieve all lists for a specific board
+// GET de listas: se obtienen todas las listas para un tablero específico pasado como query parameter
 app.get("/boards/lists", async (req: Request, res: Response) => {
   try {
     const boardId = req.query.boardId as string;
 
     if (!boardId) {
-      return res.status(400).json({ error: "Missing boardId parameter" });
+      return res.status(400).json({ error: "Falta el parámetro boardId" });
     }
 
     const query =
@@ -110,16 +110,15 @@ app.get("/boards/lists", async (req: Request, res: Response) => {
     res.status(200).json(result.rows);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: "Internal Server Error" });
+    return res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
-// POST: Create a new list
+// POST de listas: creacion de nuevas listas
 app.post("/boards/lists", async (req: Request, res: Response) => {
   try {
     const listDto: List = plainToClass(List, req.body);
 
-    // Validate DTO using class-validator
     await validateOrReject(listDto);
 
     const query =
@@ -134,22 +133,19 @@ app.post("/boards/lists", async (req: Request, res: Response) => {
   }
 });
 
-// POST: Create a new card for a specific list
+// POST de tarjetas: se crea una nueva tarjeta para una lista específica
 app.post("/boards/lists/cards", async (req: Request, res: Response) => {
   const client = await pool.connect();
 
   try {
     const cardDto: Card = plainToClass(Card, req.body);
 
-    // Validate DTO using class-validator
     await validateOrReject(cardDto, {});
 
     client.query("BEGIN");
 
-    // Get current date and time if dueDate is not provided
     const date = cardDto.dueDate ? new Date(cardDto.dueDate) : new Date();
 
-    // Insert new card into "cards" table with default dueDate
     const cardQuery =
       "INSERT INTO cards(name, description, dueDate, listId) VALUES($1, $2, $3, $4) RETURNING id";
     const cardValues = [
@@ -161,7 +157,6 @@ app.post("/boards/lists/cards", async (req: Request, res: Response) => {
     const cardResult = await client.query(cardQuery, cardValues);
     const cardId = cardResult.rows[0].id;
 
-    // Insert card owner into "card_users" table
     const cardOwnerQuery =
       "INSERT INTO card_users(userId, cardId, isOwner) VALUES($1, $2, true)";
     const cardOwnerValues = [cardDto.ownerUserId, cardId];
@@ -179,35 +174,32 @@ app.post("/boards/lists/cards", async (req: Request, res: Response) => {
   }
 });
 
-// POST: Add a member to a specific card
+// POST de miembros de tarjeta: se agrega un miembro a una tarjeta específica
 app.post("/boards/lists/cards/members", async (req: Request, res: Response) => {
   const client = await pool.connect();
 
   try {
     const { cardId, userId } = req.body;
 
-    // Check if the card exists
     const checkCardQuery = "SELECT * FROM cards WHERE id = $1";
     const checkCardValues = [cardId];
     const checkCardResult = await client.query(checkCardQuery, checkCardValues);
 
     if (checkCardResult.rows.length === 0) {
-      return res.status(404).json({ error: "Card not found." });
+      return res.status(404).json({ error: "Tarjeta no encontrada." });
     }
 
-    // Check if the user is not the owner of the card
     const checkOwnershipQuery =
       "SELECT 1 FROM card_users WHERE cardId = $1 AND userId = $2 AND isOwner = true";
     const checkOwnershipValues = [cardId, userId];
     const checkOwnershipResult = await client.query(checkOwnershipQuery, checkOwnershipValues);
 
     if (checkOwnershipResult.rows.length > 0) {
-      return res.status(403).json({ error: "User is already the owner of the card." });
+      return res.status(403).json({ error: "El usuario ya es el propietario de la tarjeta." });
     }
 
     client.query("BEGIN");
 
-    // Add member to "card_users" table
     const addMemberQuery =
       "INSERT INTO card_users(userId, cardId, isOwner) VALUES($1, $2, false)";
     const addMemberValues = [userId, cardId];
@@ -219,18 +211,18 @@ app.post("/boards/lists/cards/members", async (req: Request, res: Response) => {
   } catch (error) {
     client.query("ROLLBACK");
     console.error(error);
-    return res.status(500).json({ error: "Internal Server Error." });
+    return res.status(500).json({ error: "Error interno del servidor." });
   } finally {
     client.release();
   }
 });
 
-// GET: Retrieve all cards for a specific list
+// GET de tarjetas: Obtener todas las tarjetas para una lista específica especificada con un query parameter
 app.get("/boards/lists/cards", async (req: Request, res: Response) => {
   const { listId } = req.query;
 
   if (!listId) {
-    return res.status(400).json({ error: "Missing listId parameter" });
+    return res.status(400).json({ error: "Falta el parámetro listId" });
   }
 
   const client = await pool.connect();
@@ -251,12 +243,12 @@ app.get("/boards/lists/cards", async (req: Request, res: Response) => {
     res.status(200).json(result.rows);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: "Internal Server Error." });
+    return res.status(500).json({ error: "Error interno del servidor." });
   } finally {
     client.release();
   }
 });
 
 app.listen(port, () => {
-  console.log(`[server]: Server is running at http://localhost:${port}`);
+  console.log(`[server]: El servidor está en ejecución en http://localhost:${port}`);
 });
